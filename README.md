@@ -2,6 +2,9 @@
 
 A motion sensor for AI agents.
 
+__*"Gives your LLM agents enough info to be a helpful "watcher" without being a privacy nightmare like Windows Recall"*__ 
+*-Solteris-Dev*
+
 A PIR sensor tells you *that* something moved, never *what*. This is the same
 idea for a screen: an MCP server that watches named rectangles and answers
 "did this change?" and "has this gone still?" with a number, a size and a
