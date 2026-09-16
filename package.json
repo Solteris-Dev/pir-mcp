@@ -7,7 +7,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Solteris-Dev/pir-mcp.git"
+    "url": "git+https://github.com/Solteris-Dev/pir-mcp.git"
   },
   "bin": {
     "pir-mcp": "dist/stdio.js"
