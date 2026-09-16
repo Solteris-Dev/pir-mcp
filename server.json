@@ -1,0 +1,58 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Solteris-Dev/pir-mcp",
+  "description": "Motion sensor for AI agents: tells when a screen region changes or goes still. Scores, never pixels.",
+  "repository": {
+    "url": "https://github.com/Solteris-Dev/pir-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "pir-mcp",
+      "version": "0.1.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "PIR_CAPTURE_CMD",
+          "description": "Screenshot command template writing binary PPM to stdout; {x} {y} {w} {h} substituted. Default: grim (wlroots).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "PIR_SELECT_CMD",
+          "description": "Interactive rectangle selector printing 'x,y wxh'. Default: slurp. Empty disables the pick tools.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "PIR_WINDOW_GEOMETRY_CMD",
+          "description": "Prints 'x,y wxh' for window {id}. Default: Hyprland via jq. Empty disables window regions.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "PIR_PICK_WINDOW_CMD",
+          "description": "Interactive window pick printing the window id. Default: Hyprland + slurp.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "PIR_MAX_WAIT_MS",
+          "description": "Cap for blocking calls, ms (default 540000); keep under the host's MCP tool timeout.",
+          "isRequired": false,
+          "format": "number",
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

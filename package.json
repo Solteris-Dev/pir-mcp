@@ -1,10 +1,14 @@
 {
   "name": "pir-mcp",
   "version": "0.1.0",
+  "mcpName": "io.github.Solteris-Dev/pir-mcp",
   "description": "A motion sensor for AI agents: MCP server that reports when a screen region changes or goes still. Scores only, never pixels.",
   "type": "module",
   "license": "MIT",
-  "repository": "github:Solteris-Dev/pir-mcp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Solteris-Dev/pir-mcp.git"
+  },
   "bin": {
     "pir-mcp": "dist/stdio.js"
   },
@@ -35,5 +39,18 @@
   },
   "allowScripts": {
     "esbuild@0.28.2": true
-  }
+  },
+  "homepage": "https://github.com/Solteris-Dev/pir-mcp#readme",
+  "bugs": "https://github.com/Solteris-Dev/pir-mcp/issues",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "agents",
+    "screen",
+    "motion-detection",
+    "privacy",
+    "wayland",
+    "hyprland"
+  ]
 }
