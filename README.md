@@ -76,6 +76,17 @@ did not already give to grim.
 
 ## Install
 
+It is on npm as [`pir-mcp`](https://www.npmjs.com/package/pir-mcp) and in
+the [official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.Solteris-Dev/pir-mcp)
+as `io.github.Solteris-Dev/pir-mcp`, so most clients can run it with
+`npx -y pir-mcp` and no clone:
+
+```sh
+claude mcp add -s user pir -- npx -y pir-mcp
+```
+
+From source:
+
 ```sh
 git clone https://github.com/Solteris-Dev/pir-mcp
 cd pir-mcp && npm install && npm run build
@@ -130,6 +141,8 @@ documentation.
 ### Claude Code
 
 ```sh
+claude mcp add -s user pir -- npx -y pir-mcp
+# or, from a source checkout:
 claude mcp add -s user pir -- node /path/to/pir-mcp/dist/stdio.js
 ```
 
