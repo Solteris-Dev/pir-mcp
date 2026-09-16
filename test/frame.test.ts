@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { diff, parsePpm, rmse, toGrid } from "../src/frame.js";
-import { parseSelection, renderCommand } from "../src/capture.js";
+import { parseSelection, renderCommand, renderWindowCommand } from "../src/capture.js";
 
 function ppm(width: number, height: number, fill: (x: number, y: number) => [number, number, number]): Uint8Array {
   const header = Buffer.from(`P6\n# a comment\n${width} ${height}\n255\n`, "ascii");
@@ -85,4 +85,10 @@ test("selector output parsing", () => {
   assert.deepEqual(parseSelection("-2560,0 2560x26\n"), { x: -2560, y: 0, w: 2560, h: 26 });
   assert.throws(() => parseSelection("selection cancelled"), /expected/);
   assert.throws(() => parseSelection("1,1 0x0"), /no area/);
+});
+
+test("window ids are validated before touching a shell", () => {
+  assert.equal(renderWindowCommand("geom {id}", "0x564d21946290"), "geom 0x564d21946290");
+  assert.throws(() => renderWindowCommand("geom {id}", "0x1; rm -rf ~"), /refusing/);
+  assert.throws(() => renderWindowCommand("geom {id}", "$(id)"), /refusing/);
 });

@@ -2,13 +2,20 @@
  * The sensor proper: named regions, and the three questions an agent asks of
  * them. State per region is one grid (the last sample) — never an image.
  */
-import { captureGrid, type CaptureOptions } from "./capture.js";
+import { captureGrid, windowGeometry, type CaptureOptions } from "./capture.js";
 import { diff, type Diff, type Grid, type Rect } from "./frame.js";
 
 export interface Region extends Rect {
   name: string;
   /** rects to ignore, in region-local pixel coordinates */
   masks: Rect[];
+  /** if set, x/y/w/h are re-resolved from this window before every capture */
+  window?: string;
+}
+
+export interface SensorOptions extends CaptureOptions {
+  /** template with {id}; empty disables window regions */
+  windowGeometryCommand: string;
 }
 
 export type Metric = "rmse" | "peak";
@@ -24,19 +31,32 @@ export interface WaitOptions {
 const pick = (d: Diff, m: Metric) => (m === "peak" ? d.peak : d.rmse);
 const show = (d: Diff) => ({ rmse: round(d.rmse), peak: round(d.peak) });
 
+/** A grid of a different shape (the window resized) is, for our purposes, maximal change. */
+const RESIZED: Diff = { rmse: 1, peak: 1 };
+function cmp(a: Grid, b: Grid): Diff {
+  return a.gw === b.gw && a.gh === b.gh ? diff(a, b) : RESIZED;
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class Sensor {
   private regions = new Map<string, Region>();
   private last = new Map<string, { grid: Grid; at: number }>();
 
-  constructor(private readonly capture: CaptureOptions) {}
+  constructor(private readonly opts: SensorOptions) {}
 
   define(r: Region): Region {
     if (!(r.w > 0 && r.h > 0)) throw new Error("region needs positive width and height");
     this.regions.set(r.name, r);
     this.last.delete(r.name);
     return r;
+  }
+
+  /** A region pinned to a window: geometry is looked up now and again before every capture. */
+  async defineWindow(name: string, window: string, masks: Rect[] = []): Promise<Region> {
+    if (!this.opts.windowGeometryCommand) throw new Error("window regions are disabled (PIR_WINDOW_GEOMETRY_CMD is empty)");
+    const g = await windowGeometry(this.opts.windowGeometryCommand, window, this.opts.timeoutMs);
+    return this.define({ name, ...g, masks, window });
   }
 
   /** Add a mask given in global coordinates (as a selector returns them). */
@@ -67,7 +87,11 @@ export class Sensor {
   }
 
   private async grab(r: Region): Promise<Grid> {
-    return captureGrid(r, r.masks, this.capture);
+    if (r.window) {
+      const g = await windowGeometry(this.opts.windowGeometryCommand, r.window, this.opts.timeoutMs);
+      Object.assign(r, g); // follow the window; masks stay window-local
+    }
+    return captureGrid(r, r.masks, this.opts);
   }
 
   /** One capture; score against the previous sample of this region, if any. */
@@ -80,8 +104,9 @@ export class Sensor {
     return {
       region: name,
       captured_at: new Date(now).toISOString(),
+      geometry: { x: r.x, y: r.y, w: r.w, h: r.h },
       size: { width: grid.width, height: grid.height, cells: `${grid.gw}x${grid.gh}` },
-      vs_previous: prev ? show(diff(prev.grid, grid)) : null,
+      vs_previous: prev ? show(cmp(prev.grid, grid)) : null,
       previous_age_ms: prev ? now - prev.at : null,
     };
   }
@@ -103,8 +128,8 @@ export class Sensor {
       await sleep(Math.min(o.intervalMs, o.timeoutMs - elapsed));
       const grid = await this.grab(r);
       samples++;
-      const vsBase = diff(baseline, grid);
-      const vsPrev = diff(prev, grid);
+      const vsBase = cmp(baseline, grid);
+      const vsPrev = cmp(prev, grid);
       max = { rmse: Math.max(max.rmse, vsBase.rmse), peak: Math.max(max.peak, vsBase.peak) };
       prev = grid;
       if (pick(vsBase, o.metric) >= o.threshold) {
@@ -165,7 +190,7 @@ export class Sensor {
       await sleep(Math.min(o.intervalMs, o.timeoutMs - elapsed));
       const grid = await this.grab(r);
       samples++;
-      last = diff(prev, grid);
+      last = cmp(prev, grid);
       if (pick(last, o.metric) >= o.threshold) stillSince = Date.now();
       prev = grid;
     }

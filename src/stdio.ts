@@ -6,6 +6,8 @@
  *   PIR_SELECT_CMD      interactive rectangle selector printing "x,y wxh"; default slurp -f "%x,%y %wx%h";
  *                       set to "" to disable the pick tools
  *   PIR_SELECT_TIMEOUT_MS  how long the person has to draw (60000)
+ *   PIR_WINDOW_GEOMETRY_CMD  prints "x,y wxh" for window {id}; default is Hyprland via jq; "" disables window regions
+ *   PIR_PICK_WINDOW_CMD      interactive window pick printing the window id; default Hyprland+slurp; "" disables
  *   PIR_REGIONS         optional JSON file: [{ "name", "x", "y", "w", "h", "masks": [...] }, ...]
  *   PIR_THRESHOLD       default change threshold (0.05)
  *   PIR_INTERVAL_MS     default sampling period (500)
@@ -17,13 +19,24 @@
  */
 import { readFileSync } from "node:fs";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
-import { DEFAULT_CAPTURE_CMD, DEFAULT_SELECT_CMD } from "./capture.js";
+import {
+  DEFAULT_CAPTURE_CMD,
+  DEFAULT_PICK_WINDOW_CMD,
+  DEFAULT_SELECT_CMD,
+  DEFAULT_WINDOW_GEOMETRY_CMD,
+} from "./capture.js";
 import { Sensor, type Region } from "./sensor.js";
 import { createServer } from "./server.js";
 
 function env(name: string, def: string): string {
   const v = process.env[name];
   return v === undefined || v === "" ? def : v;
+}
+
+/** Like env(), but an explicitly empty value means "off". */
+function envOrOff(name: string, def: string): string {
+  const v = process.env[name];
+  return v === undefined ? def : v;
 }
 
 function loadRegions(path: string | undefined): Region[] {
@@ -35,16 +48,26 @@ function loadRegions(path: string | undefined): Region[] {
     if (typeof o.name !== "string" || [o.x, o.y, o.w, o.h].some((v) => typeof v !== "number")) {
       throw new Error(`${path}: each region needs name, x, y, w, h`);
     }
-    return { name: o.name, x: o.x!, y: o.y!, w: o.w!, h: o.h!, masks: o.masks ?? [] };
+    return {
+      name: o.name,
+      x: o.x!,
+      y: o.y!,
+      w: o.w!,
+      h: o.h!,
+      masks: o.masks ?? [],
+      ...(typeof o.window === "string" ? { window: o.window } : {}),
+    };
   });
 }
 
 async function main(): Promise<void> {
   const captureCommand = env("PIR_CAPTURE_CMD", DEFAULT_CAPTURE_CMD);
+  const windowGeometryCommand = envOrOff("PIR_WINDOW_GEOMETRY_CMD", DEFAULT_WINDOW_GEOMETRY_CMD);
   const sensor = new Sensor({
     command: captureCommand,
     timeoutMs: Number(env("PIR_CAPTURE_TIMEOUT_MS", "10000")),
     maxCells: Number(env("PIR_MAX_CELLS", "64")),
+    windowGeometryCommand,
   });
   for (const r of loadRegions(process.env.PIR_REGIONS)) sensor.define(r);
 
@@ -54,8 +77,10 @@ async function main(): Promise<void> {
     defaultWaitMs: Number(env("PIR_DEFAULT_WAIT_MS", "55000")),
     maxWaitMs: Number(env("PIR_MAX_WAIT_MS", "540000")),
     captureCommand,
-    selectCommand: process.env.PIR_SELECT_CMD === undefined ? DEFAULT_SELECT_CMD : process.env.PIR_SELECT_CMD,
+    selectCommand: envOrOff("PIR_SELECT_CMD", DEFAULT_SELECT_CMD),
     selectTimeoutMs: Number(env("PIR_SELECT_TIMEOUT_MS", "60000")),
+    windowGeometryCommand,
+    pickWindowCommand: envOrOff("PIR_PICK_WINDOW_CMD", DEFAULT_PICK_WINDOW_CMD),
   });
 
   const shutdown = (): void => {

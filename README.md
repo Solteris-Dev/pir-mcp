@@ -24,6 +24,10 @@ has stopped ticking*. Both are motion questions. Neither needs a screenshot.
   (a clock, a spinner, a caret).
 - **`pir_define_region`** the scriptable path: name a rectangle by global
   layout coordinates, with optional masks.
+- **`pir_pick_window`** / **`pir_define_window`** watch a window instead of a
+  fixed rectangle. Its geometry is looked up again before every capture, so
+  the region follows the window when it moves; a resize counts as maximal
+  change. The pick offers your visible windows as boxes to click.
 - **`pir_sample`** capture once, score against the previous sample of that
   region. Cheap; also the way to check the capture command works.
 - **`pir_wait_for_change`** block until the region departs from how it looked
@@ -104,6 +108,24 @@ those tools entirely.
 |---|---|
 | wlroots / Hyprland / Sway (default) | `slurp -f "%x,%y %wx%h"` |
 | X11 | `slop -f "%x,%y %wx%h"` |
+| macOS | see [contrib/macos](contrib/macos/README.md) (untested) |
+
+### Window commands
+
+`PIR_WINDOW_GEOMETRY_CMD` gets `{id}` substituted and must print `x,y wxh`
+for that window; `PIR_PICK_WINDOW_CMD` must print the id of the window the
+person chose. Both default to Hyprland (via `jq` and `slurp -r`). Set either
+to an empty string to remove the corresponding tools. Window ids are limited
+to `[A-Za-z0-9_.:-]` before they reach a shell.
+
+| environment | geometry | pick |
+|---|---|---|
+| Hyprland (default) | `hyprctl -j clients \| jq -r --arg id "{id}" '.[] \| select(.address==$id) \| "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'` | visible windows as slurp boxes, prints the address |
+| Sway | `swaymsg -t get_tree \| jq -r '.. \| select(.id? == {id}) \| "\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height)"'` | `swaymsg -t get_tree \| jq -r '.. \| select(.visible? == true) \| "\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height) \(.id)"' \| slurp -r -f '%l'` |
+| X11 | `xdotool getwindowgeometry --shell {id} \| awk -F= '/^X/{x=$2}/^Y/{y=$2}/^WIDTH/{w=$2}/^HEIGHT/{h=$2}END{print x","y" "w"x"h}'` | `xdotool selectwindow` |
+
+Only the Hyprland pair has been run; the others are written from the tools'
+documentation.
 
 ### Claude Code
 
@@ -151,6 +173,12 @@ pir_wait_for_stillness  name=bar still_for_ms=180000 metric=peak timeout_ms=5400
 `still=true` comes back only if the bar stopped; otherwise the call returns
 `still=false` at the timeout and the agent calls again. Nothing on the screen
 was ever seen, and the person drew the rectangle themselves.
+
+## Contributing starting points
+
+`contrib/macos/` holds an AppKit rectangle selector and capture recipe,
+written blind and untested. If you run it on a real Mac, fix what breaks and
+send it back.
 
 ## Tests
 

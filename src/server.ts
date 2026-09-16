@@ -7,7 +7,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { Sensor, WaitOptions } from "./sensor.js";
 import type { Metric } from "./sensor.js";
-import { selectRect } from "./capture.js";
+import { pickWindow, selectRect } from "./capture.js";
 
 export const SERVER_NAME = "pir-mcp";
 export const SERVER_VERSION = "0.1.0";
@@ -22,6 +22,10 @@ export interface ServerOptions {
   /** interactive selector; empty string disables the pick tools */
   selectCommand: string;
   selectTimeoutMs: number;
+  /** window geometry lookup; empty disables window regions */
+  windowGeometryCommand: string;
+  /** interactive window pick; empty disables pir_pick_window */
+  pickWindowCommand: string;
 }
 
 interface ToolEnvelope {
@@ -115,6 +119,51 @@ export function createServer(sensor: Sensor, opts: ServerOptions): McpServer {
       ),
   );
 
+  if (opts.windowGeometryCommand) {
+    server.registerTool(
+      "pir_define_window",
+      {
+        description:
+          "Watch a window rather than a fixed rectangle: geometry is looked up from the window id before " +
+          "every capture, so the region follows the window when it moves. A resize counts as maximal change. " +
+          "Masks are window-local. The id is whatever your window-geometry command understands (a Hyprland " +
+          "address like 0x5f3a..., an X11 window id).",
+        inputSchema: z.object({
+          name: z.string().min(1).max(64),
+          window: z.string().min(1).max(64),
+          masks: z.array(rect).max(32).optional(),
+        }),
+      },
+      async (a) => runTool(() => sensor.defineWindow(a.name, a.window, a.masks ?? [])),
+    );
+  }
+
+  if (opts.windowGeometryCommand && opts.pickWindowCommand) {
+    server.registerTool(
+      "pir_pick_window",
+      {
+        description:
+          "Ask the person at the screen to click the window to watch (visible windows are offered as boxes; " +
+          "Escape cancels). The region then follows that window. Prefer this over pir_define_window when a " +
+          "human is present.",
+        inputSchema: z.object({
+          name: z.string().min(1).max(64),
+          purpose: z
+            .string()
+            .max(200)
+            .optional()
+            .describe("one line on why you want to watch it; returned unchanged so it lands in the transcript"),
+        }),
+      },
+      async (a) =>
+        runTool(async () => {
+          const id = await pickWindow(opts.pickWindowCommand, opts.selectTimeoutMs);
+          const region = await sensor.defineWindow(a.name, id);
+          return { ...region, ...(a.purpose ? { purpose: a.purpose } : {}) };
+        }),
+    );
+  }
+
   if (opts.selectCommand) {
     server.registerTool(
       "pir_pick_region",
@@ -164,6 +213,8 @@ export function createServer(sensor: Sensor, opts: ServerOptions): McpServer {
         regions: sensor.list(),
         capture_command: opts.captureCommand,
         select_command: opts.selectCommand || null,
+        window_geometry_command: opts.windowGeometryCommand || null,
+        pick_window_command: opts.pickWindowCommand || null,
       })),
   );
 
