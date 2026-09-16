@@ -1,0 +1,39 @@
+{
+  "name": "pir-mcp",
+  "version": "0.1.0",
+  "description": "A motion sensor for AI agents: MCP server that reports when a screen region changes or goes still. Scores only, never pixels.",
+  "type": "module",
+  "license": "MIT",
+  "repository": "github:Solteris-Dev/pir-mcp",
+  "bin": {
+    "pir-mcp": "dist/stdio.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx src/stdio.ts",
+    "start": "node dist/stdio.js",
+    "test": "tsx --test test/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "tsx": "^4.23.0",
+    "typescript": "^6.0.3"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}
