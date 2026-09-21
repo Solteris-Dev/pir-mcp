@@ -5,6 +5,8 @@ A motion sensor for AI agents.
 __*"Gives your LLM agents enough info to be a helpful "watcher" without being a privacy nightmare like Windows Recall"*__ 
 *-Solteris-Dev*
 
+[![pir-mcp MCP server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/Solteris-Dev/pir-mcp/badges/card.svg)](https://glama.ai/mcp/servers/Solteris-Dev/pir-mcp)
+
 A PIR sensor tells you *that* something moved, never *what*. This is the same
 idea for a screen: an MCP server that watches named rectangles and answers
 "did this change?" and "has this gone still?" with a number, a size and a
