@@ -27,7 +27,10 @@ has stopped ticking*. Both are motion questions. Neither needs a screenshot.
 - **`pir_pick_window`** / **`pir_define_window`** watch a window instead of a
   fixed rectangle. Its geometry is looked up again before every capture, so
   the region follows the window when it moves; a resize counts as maximal
-  change. The pick offers your visible windows as boxes to click.
+  change. The pick offers your visible windows as boxes to click. Give
+  `pir_define_window` an `anchor`, or call `pir_pick_region` with
+  `follow_window: true`, to watch only part of a window: the voice panel of
+  a chat client, say, while someone keeps using the rest of it.
 - **`pir_sample`** capture once, score against the previous sample of that
   region. Cheap; also the way to check the capture command works.
 - **`pir_wait_for_change`** block until the region departs from how it looked
@@ -37,6 +40,29 @@ has stopped ticking*. Both are motion questions. Neither needs a screenshot.
   safe to act". A long window on something that should keep changing means
   it is frozen, and `still=true` is the alarm.
 - **`pir_list_regions`**, **`pir_remove_region`** housekeeping.
+
+### Covered and hidden windows
+
+Window regions are captured from the window itself where the compositor
+allows it (`grim -T` on Hyprland), so a window dragged over the watched one
+does not register as change, and a window on another workspace can still be
+watched. Every result on a window region also carries `occlusion`:
+`visible`, `covered` (with `covered_fraction`) or `hidden` (on a workspace
+nobody can see). A hidden app may stop repainting, so a hidden region that
+stays still is weak evidence. When window regions are cut from the screen
+instead, covered or hidden makes the score meaningless, and the blocking
+calls follow `on_occlusion`:
+
+| `on_occlusion` | while occluded | when it reappears |
+|---|---|---|
+| `report` (default) | return at once with `occluded: true` | |
+| `pause` | keep waiting, judge nothing | compare against the baseline from before, so a change made while hidden counts |
+| `pause_rebaseline` | keep waiting, judge nothing | take a fresh baseline |
+| `count` | judge anyway: being covered is a change | |
+
+Paused time counts toward `timeout_ms`, and never counts as stillness.
+Changes *inside* the watched window that cover the anchor (a popup in the
+same app) are ordinary changes; the compositor cannot see them.
 
 Every comparison reports two numbers over a coarse grid of averaged colour
 cells (at most 64 across, each at least 4 px), both 0 for identical and 1 for
@@ -66,7 +92,10 @@ be read.
   the agent has to write down before you draw.
 
 What it *does* reveal, so you can decide whether that is acceptable: that a
-given rectangle changed, at a given time, by a given magnitude. On a region
+given rectangle changed, at a given time, by a given magnitude. For window
+regions it also reports whether other windows cover the watched one, and by
+how much, which says something about what you are doing elsewhere on screen;
+set `PIR_STACK_CMD=""` to turn that off. On a region
 covering a chat window that is presence information. Choose regions
 accordingly; the server has no opinion.
 
@@ -124,19 +153,32 @@ those tools entirely.
 ### Window commands
 
 `PIR_WINDOW_GEOMETRY_CMD` gets `{id}` substituted and must print `x,y wxh`
-for that window; `PIR_PICK_WINDOW_CMD` must print the id of the window the
+for that window, optionally followed by the window's canonical id (what the
+capture and stack commands call it); `PIR_PICK_WINDOW_CMD` must print the id of the window the
 person chose. Both default to Hyprland (via `jq` and `slurp -r`). Set either
 to an empty string to remove the corresponding tools. Window ids are limited
 to `[A-Za-z0-9_.:-]` before they reach a shell.
 
 | environment | geometry | pick |
 |---|---|---|
-| Hyprland (default) | `hyprctl -j clients \| jq -r --arg id "{id}" '.[] \| select(.address==$id) \| "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'` | visible windows as slurp boxes, prints the address |
+| Hyprland (default) | `hyprctl -j clients \| jq -r --arg id "{id}" '.[] \| select(.stableId==$id or .address==$id) \| "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1]) \(.stableId)"'` | visible windows as slurp boxes, prints the stableId |
 | Sway | `swaymsg -t get_tree \| jq -r '.. \| select(.id? == {id}) \| "\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height)"'` | `swaymsg -t get_tree \| jq -r '.. \| select(.visible? == true) \| "\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height) \(.id)"' \| slurp -r -f '%l'` |
 | X11 | `xdotool getwindowgeometry --shell {id} \| awk -F= '/^X/{x=$2}/^Y/{y=$2}/^WIDTH/{w=$2}/^HEIGHT/{h=$2}END{print x","y" "w"x"h}'` | `xdotool selectwindow` |
 
 Only the Hyprland pair has been run; the others are written from the tools'
 documentation.
+
+`PIR_WINDOW_CAPTURE_CMD` (default `grim -T {id} -t ppm -`) captures one
+window's own contents; set it to an empty string to cut window regions from
+the screen instead. `PIR_STACK_CMD` lists the visible windows topmost first,
+one `id x,y wxh` per line; it drives occlusion reporting and
+`follow_window`. Hyprland exposes no z-order, so the default approximates it
+(pinned, special workspace, fullscreen, floating, tiled, each by focus
+recency; a floating window allowed above a fullscreen one is misjudged as
+under it). Both default to empty when `PIR_WINDOW_GEOMETRY_CMD` is set to
+anything other than its default, since their defaults speak Hyprland, and
+`PIR_WINDOW_CAPTURE_CMD` also when you have set your own `PIR_CAPTURE_CMD`. On macOS,
+`screencapture -l <windowid>` is the per-window equivalent (untested here).
 
 ### Claude Code
 

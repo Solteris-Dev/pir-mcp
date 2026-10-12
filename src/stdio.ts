@@ -8,6 +8,12 @@
  *   PIR_SELECT_TIMEOUT_MS  how long the person has to draw (60000)
  *   PIR_WINDOW_GEOMETRY_CMD  prints "x,y wxh" for window {id}; default is Hyprland via jq; "" disables window regions
  *   PIR_PICK_WINDOW_CMD      interactive window pick printing the window id; default Hyprland+slurp; "" disables
+ *   PIR_WINDOW_CAPTURE_CMD   captures window {id}'s own contents as PPM; default grim -T {id}; "" cuts window
+ *                            regions from the screen instead (then a covering window counts as change)
+ *   PIR_STACK_CMD            visible windows topmost first, "id x,y wxh" per line; default Hyprland via jq;
+ *                            "" disables occlusion reporting and follow_window. Both of these default to ""
+ *                            when PIR_WINDOW_GEOMETRY_CMD is set to something other than its default, and
+ *                            PIR_WINDOW_CAPTURE_CMD also when PIR_CAPTURE_CMD is.
  *   PIR_REGIONS         optional JSON file: [{ "name", "x", "y", "w", "h", "masks": [...] }, ...]
  *   PIR_THRESHOLD       default change threshold (0.05)
  *   PIR_INTERVAL_MS     default sampling period (500)
@@ -23,6 +29,8 @@ import {
   DEFAULT_CAPTURE_CMD,
   DEFAULT_PICK_WINDOW_CMD,
   DEFAULT_SELECT_CMD,
+  DEFAULT_STACK_CMD,
+  DEFAULT_WINDOW_CAPTURE_CMD,
   DEFAULT_WINDOW_GEOMETRY_CMD,
 } from "./capture.js";
 import { Sensor, type Region } from "./sensor.js";
@@ -56,6 +64,7 @@ function loadRegions(path: string | undefined): Region[] {
       h: o.h!,
       masks: o.masks ?? [],
       ...(typeof o.window === "string" ? { window: o.window } : {}),
+      ...(o.anchor ? { anchor: o.anchor } : {}),
     };
   });
 }
@@ -63,11 +72,20 @@ function loadRegions(path: string | undefined): Region[] {
 async function main(): Promise<void> {
   const captureCommand = env("PIR_CAPTURE_CMD", DEFAULT_CAPTURE_CMD);
   const windowGeometryCommand = envOrOff("PIR_WINDOW_GEOMETRY_CMD", DEFAULT_WINDOW_GEOMETRY_CMD);
+  // The capture and stack defaults speak Hyprland; someone who replaced the
+  // geometry command is elsewhere, so those default to off unless set too.
+  // Someone who wrapped the screen capture command keeps it for windows as well.
+  const hyprland = windowGeometryCommand === DEFAULT_WINDOW_GEOMETRY_CMD;
+  const ownCapture = hyprland && captureCommand === DEFAULT_CAPTURE_CMD;
+  const windowCaptureCommand = envOrOff("PIR_WINDOW_CAPTURE_CMD", ownCapture ? DEFAULT_WINDOW_CAPTURE_CMD : "");
+  const stackCommand = envOrOff("PIR_STACK_CMD", hyprland ? DEFAULT_STACK_CMD : "");
   const sensor = new Sensor({
     command: captureCommand,
     timeoutMs: Number(env("PIR_CAPTURE_TIMEOUT_MS", "10000")),
     maxCells: Number(env("PIR_MAX_CELLS", "64")),
     windowGeometryCommand,
+    windowCaptureCommand,
+    stackCommand,
   });
   for (const r of loadRegions(process.env.PIR_REGIONS)) sensor.define(r);
 
@@ -81,6 +99,8 @@ async function main(): Promise<void> {
     selectTimeoutMs: Number(env("PIR_SELECT_TIMEOUT_MS", "60000")),
     windowGeometryCommand,
     pickWindowCommand: envOrOff("PIR_PICK_WINDOW_CMD", DEFAULT_PICK_WINDOW_CMD),
+    windowCaptureCommand,
+    stackCommand,
   });
 
   const shutdown = (): void => {

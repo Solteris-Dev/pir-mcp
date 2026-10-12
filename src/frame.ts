@@ -143,3 +143,44 @@ export function diff(a: Grid, b: Grid): Diff {
 export function rmse(a: Grid, b: Grid): number {
   return diff(a, b).rmse;
 }
+
+/**
+ * Cut `r` out of a raw RGB frame. Used when a whole window is captured and
+ * only an anchored part of it is watched; the copy lives as long as the
+ * grid reduction that follows it.
+ */
+export function cropRgb(
+  width: number,
+  height: number,
+  rgb: Uint8Array,
+  r: Rect,
+): { width: number; height: number; rgb: Uint8Array } {
+  const x0 = Math.max(0, Math.min(width, Math.round(r.x)));
+  const y0 = Math.max(0, Math.min(height, Math.round(r.y)));
+  const x1 = Math.max(x0, Math.min(width, Math.round(r.x + r.w)));
+  const y1 = Math.max(y0, Math.min(height, Math.round(r.y + r.h)));
+  const w = x1 - x0;
+  const h = y1 - y0;
+  if (w === 0 || h === 0) throw new Error(`anchor ${JSON.stringify(r)} lies outside the ${width}x${height} window`);
+  const out = new Uint8Array(w * h * 3);
+  for (let y = 0; y < h; y++) {
+    const from = ((y0 + y) * width + x0) * 3;
+    out.set(rgb.subarray(from, from + w * 3), y * w * 3);
+  }
+  return { width: w, height: h, rgb: out };
+}
+
+/** Fraction of `r` covered by the union of `covers`, sampled on a 32x32 lattice. */
+export function coveredFraction(r: Rect, covers: Rect[]): number {
+  if (covers.length === 0) return 0;
+  const n = 32;
+  let hit = 0;
+  for (let j = 0; j < n; j++) {
+    const py = r.y + ((j + 0.5) * r.h) / n;
+    for (let i = 0; i < n; i++) {
+      const px = r.x + ((i + 0.5) * r.w) / n;
+      if (covers.some((c) => px >= c.x && px < c.x + c.w && py >= c.y && py < c.y + c.h)) hit++;
+    }
+  }
+  return hit / (n * n);
+}

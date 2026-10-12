@@ -5,8 +5,7 @@
  */
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import type { Sensor, WaitOptions } from "./sensor.js";
-import type { Metric } from "./sensor.js";
+import type { Metric, OnOcclusion, Sensor, WaitOptions } from "./sensor.js";
 import { pickWindow, selectRect } from "./capture.js";
 
 export const SERVER_NAME = "pir-mcp";
@@ -26,6 +25,10 @@ export interface ServerOptions {
   windowGeometryCommand: string;
   /** interactive window pick; empty disables pir_pick_window */
   pickWindowCommand: string;
+  /** one window's own contents by id; empty means window regions are cut from the screen */
+  windowCaptureCommand: string;
+  /** visible windows topmost first; empty disables occlusion reporting and follow_window */
+  stackCommand: string;
 }
 
 interface ToolEnvelope {
@@ -65,11 +68,13 @@ export function createServer(sensor: Sensor, opts: ServerOptions): McpServer {
     metric?: Metric;
     interval_ms?: number;
     timeout_ms?: number;
+    on_occlusion?: OnOcclusion;
   }): WaitOptions => ({
     threshold: a.threshold ?? opts.defaultThreshold,
     metric: a.metric ?? "rmse",
     intervalMs: Math.max(100, a.interval_ms ?? opts.defaultIntervalMs),
     timeoutMs: Math.min(opts.maxWaitMs, a.timeout_ms ?? opts.defaultWaitMs),
+    onOcclusion: a.on_occlusion ?? "report",
   });
 
   const timing = {
@@ -97,6 +102,16 @@ export function createServer(sensor: Sensor, opts: ServerOptions): McpServer {
       .min(100)
       .optional()
       .describe(`give up after this long (default ${opts.defaultWaitMs}, max ${opts.maxWaitMs})`),
+    on_occlusion: z
+      .enum(["report", "pause", "pause_rebaseline", "count"])
+      .optional()
+      .describe(
+        "window regions cut from the screen only (a window captured as itself is always judged): what to do " +
+          "while it is covered or on a hidden workspace. report (default): return at once with occluded=true. pause: keep waiting without " +
+          "judging, then compare against the baseline from before it was covered, so a change made while " +
+          "hidden still counts. pause_rebaseline: keep waiting, take a fresh baseline when it reappears. " +
+          "count: judge anyway, so being covered is a change. Paused time still counts toward timeout_ms.",
+      ),
   };
 
   server.registerTool(
@@ -125,16 +140,18 @@ export function createServer(sensor: Sensor, opts: ServerOptions): McpServer {
       {
         description:
           "Watch a window rather than a fixed rectangle: geometry is looked up from the window id before " +
-          "every capture, so the region follows the window when it moves. A resize counts as maximal change. " +
-          "Masks are window-local. The id is whatever your window-geometry command understands (a Hyprland " +
-          "address like 0x5f3a..., an X11 window id).",
+          "every capture, so the region follows the window when it moves. With anchor, only that part of " +
+          "the window is watched, so the person can use the rest of it freely. Without one, a resize counts " +
+          "as maximal change. Masks are region-local. The id is whatever your window-geometry command " +
+          "understands (on Hyprland the stableId from hyprctl clients, or the address).",
         inputSchema: z.object({
           name: z.string().min(1).max(64),
           window: z.string().min(1).max(64),
+          anchor: rect.optional().describe("the part of the window to watch, in window-local pixels"),
           masks: z.array(rect).max(32).optional(),
         }),
       },
-      async (a) => runTool(() => sensor.defineWindow(a.name, a.window, a.masks ?? [])),
+      async (a) => runTool(() => sensor.defineWindow(a.name, a.window, a.masks ?? [], a.anchor)),
     );
   }
 
@@ -171,9 +188,14 @@ export function createServer(sensor: Sensor, opts: ServerOptions): McpServer {
         description:
           "Ask the person at the screen to draw the rectangle to watch (a selector such as slurp appears; " +
           "Escape cancels). Prefer this over pir_define_region whenever a human is present: they choose what " +
-          "is sensed, and you get the geometry back. Blocks until they finish or the selector times out.",
+          "is sensed, and you get the geometry back. Blocks until they finish or the selector times out. " +
+          "With follow_window, the rectangle is pinned to the window it was drawn on and moves with it.",
         inputSchema: z.object({
           name: z.string().min(1).max(64),
+          follow_window: z
+            .boolean()
+            .optional()
+            .describe("pin the rectangle to the window under it (needs window regions and the stack command)"),
           purpose: z
             .string()
             .max(200)
@@ -184,7 +206,9 @@ export function createServer(sensor: Sensor, opts: ServerOptions): McpServer {
       async (a) =>
         runTool(async () => {
           const r = await selectRect(opts.selectCommand, opts.selectTimeoutMs);
-          const region = sensor.define({ name: a.name, ...r, masks: [] });
+          const region = a.follow_window
+            ? await sensor.defineAnchored(a.name, r)
+            : sensor.define({ name: a.name, ...r, masks: [] });
           return { ...region, ...(a.purpose ? { purpose: a.purpose } : {}) };
         }),
     );
@@ -215,6 +239,8 @@ export function createServer(sensor: Sensor, opts: ServerOptions): McpServer {
         select_command: opts.selectCommand || null,
         window_geometry_command: opts.windowGeometryCommand || null,
         pick_window_command: opts.pickWindowCommand || null,
+        window_capture_command: opts.windowCaptureCommand || null,
+        stack_command: opts.stackCommand || null,
       })),
   );
 
